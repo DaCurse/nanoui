@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="nuiCanvas" width="800" height="600" style="border:1px solid #000;"></canvas>
+
+    <script src="nui_wasm.js"></script>
+    <script>
+        const canvas = document.getElementById('nuiCanvas');
+        const ctx2d = canvas.getContext('2d');
+
+        Module.onRuntimeInitialized = () => {
+            // Setup NUI Context
+            const ctxSize = 100_000;
+            const ctxPtr = Module._malloc(ctxSize);
+
+            // Measure text callback (JS -> C)
+            const jsMeasureText = (fontPtr, textPtr, wPtr, hPtr) => {
+                const text = Module.UTF8ToString(textPtr);
+
+                ctx2d.font = "16px sans-serif";
+                const metrics = ctx2d.measureText(text);
+
+                // Write the results back into the pointers
+                Module.setValue(wPtr, Math.ceil(metrics.width), 'i32');
+                Module.setValue(hPtr, 20, 'i32');
+            };
+
+            // Set signature to 'viiii'
+            // v = void return
+            // iiii = four integer arguments
+            const measureTextPtr = Module.addFunction(jsMeasureText, 'viiii');
+
+            Module._nui_init(ctxPtr, measureTextPtr, 0);
+
+            // Input Handling
+            canvas.onmousemove = (e) => Module._nui_input_mouse_move(ctxPtr, e.offsetX, e.offsetY);
+            canvas.onmousedown = () => Module._nui_input_mouse_button(ctxPtr, true);
+            canvas.onmouseup = () => Module._nui_input_mouse_button(ctxPtr, false);
+
+            function loop() {
+                // Run UI Logic
+                Module._run_ui_frame(ctxPtr);
+
+                // Render Commands
+                ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+                ctx2d.save();
+
+                // Allocate a small buffer for the output command
+                const cmdOutPtr = Module._malloc(64); // Size of NUI_Command
+
+                // Drain and render
+                while (Module._nui_next_command(ctxPtr, cmdOutPtr)) {
+                    renderCommand(cmdOutPtr);
+                }
+
+                ctx2d.restore();
+
+                Module._free(cmdOutPtr);
+                requestAnimationFrame(loop);
+            }
+
+            function renderCommand(ptr) {
+                const type = Module.getValue(ptr, 'i32'); // NUI_CommandType
+
+                if (type === 0) { // NUI_CMD_RECT
+                    const x = Module.getValue(ptr + 4, 'i32');
+                    const y = Module.getValue(ptr + 8, 'i32');
+                    const w = Module.getValue(ptr + 12, 'i32');
+                    const h = Module.getValue(ptr + 16, 'i32');
+                    const r = Module.getValue(ptr + 20, 'i8') & 0xFF;
+                    const g = Module.getValue(ptr + 21, 'i8') & 0xFF;
+                    const b = Module.getValue(ptr + 22, 'i8') & 0xFF;
+                    ctx2d.fillStyle = `rgb(${r},${g},${b})`;
+                    ctx2d.fillRect(x, y, w, h);
+                }
+                else if (type === 1) { // NUI_CMD_TEXT
+                    const textPtr = Module.getValue(ptr + 4, 'i32');
+                    const x = Module.getValue(ptr + 8, 'i32');
+                    const y = Module.getValue(ptr + 12, 'i32');
+                    ctx2d.fillStyle = "white";
+                    ctx2d.fillText(Module.UTF8ToString(textPtr), x, y + 12);
+                }
+                else if (type === 2) { // NUI_CMD_SCISSORS
+                    const x = Module.getValue(ptr + 4, 'i32');
+                    const y = Module.getValue(ptr + 8, 'i32');
+                    const w = Module.getValue(ptr + 12, 'i32');
+                    const h = Module.getValue(ptr + 16, 'i32');
+
+                    // Reset any previous clipping for this command stream
+                    ctx2d.restore();
+                    ctx2d.save();
+
+                    // Apply new clipping region
+                    ctx2d.beginPath();
+                    ctx2d.rect(x, y, w, h);
+                    ctx2d.clip();
+                }
+            }
+
+            loop();
+        };
+    </script>
+</body>
+
+</html>

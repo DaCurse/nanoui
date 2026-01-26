@@ -5,7 +5,9 @@
 #include <stdint.h>
 
 #define NUI_MAX_COMMANDS (1024)
-#define NUI_ID_STACK_SIZE (16)
+#define NUI_LAYOUT_STACK_SIZE (32)
+#define NUI_SCISSORS_STACK_SIZE (32)
+#define NUI_CONTAINER_LIST_SIZE (32)
 
 typedef uint32_t NUI_Id;
 
@@ -16,6 +18,17 @@ typedef struct {
 typedef struct {
     unsigned char r, g, b, a;
 } NUI_Color;
+
+// A container has a retained area and z-index
+typedef struct {
+    NUI_Id id;
+    NUI_AABB area;
+    int z_index;
+
+    // Command slice within the global command buffer
+    int command_start_index;
+    int command_count;
+} NUI_Container;
 
 typedef enum {
     NUI_CMD_RECT,
@@ -35,21 +48,21 @@ typedef struct {
 } NUI_CommandText;
 
 typedef struct {
-    bool clear;
-    NUI_AABB area; // set if clear == false
-} NUI_CommandScissor;
+    NUI_AABB area;
+} NUI_CommandScissors;
 
 typedef struct {
     NUI_CommandType type;
     union {
         NUI_CommandRect rect;
         NUI_CommandText text;
-        NUI_CommandScissor scissor;
+        NUI_CommandScissors scissors;
     };
 } NUI_Command;
 
 typedef struct {
     int mouse_x, mouse_y;
+    int drag_offset_x, drag_offset_y;
     bool mouse_down;
 
     bool mouse_pressed;
@@ -59,16 +72,36 @@ typedef struct {
     bool mouse_released_queued;
 } NUI_InputState;
 
+typedef enum {
+    NUI_LAYOUT_VERTICAL,
+    NUI_LAYOUT_HORIZONTAL,
+} NUI_LayoutMode;
+
 typedef struct {
-    int cursor_x, cursor_y; // TODO
-} NUI_LayoutState;
+    int cursor_x, cursor_y;
+    int start_x, start_y;
+    int size_x, size_y;
+    int row_height;
+    int width;
+    int margin;
+    NUI_LayoutMode mode;
+} NUI_Layout;
 
 typedef struct {
     NUI_Color text;
 
+    NUI_Color window_bg;
+    NUI_Color window_title_bar;
+
     NUI_Color button_idle;
     NUI_Color button_hot;
     NUI_Color button_active;
+
+    NUI_Color border;
+    int border_radius;
+
+    int padding_x, padding_y;
+    int margin;
 
 } NUI_Style;
 
@@ -86,16 +119,40 @@ typedef struct {
 
     // State
     NUI_InputState input;
-    NUI_LayoutState layout;
     NUI_Style style;
 
+    // Layout
+    NUI_Layout layout;
+    NUI_Layout layout_stack[NUI_LAYOUT_STACK_SIZE];
+    int layout_stack_top;
+
+    // Scissors
+    NUI_AABB scissors_stack[NUI_SCISSORS_STACK_SIZE];
+    NUI_AABB current_scissors;
+    int scissors_stack_top;
+
+    // Container list
+    NUI_Container container_list[NUI_CONTAINER_LIST_SIZE];
+    int container_count;
+    int last_z_index;
+
+    // The active container currently being drawn to
+    NUI_Container *current_container;
+    // Command iterator State
+    NUI_Container *sorted_containers[NUI_CONTAINER_LIST_SIZE];
+    int sorted_count;
+    // The index of the current container being iterated when draining commands
+    int iter_container_index;
+    // The offset of the current command within the current container being
+    // iterated
+    int iter_cmd_offset;
+
+    // Interaction state
     NUI_Id hot;
     NUI_Id active;
     NUI_Id last_active;
 
-    NUI_Id id_stack[NUI_ID_STACK_SIZE];
-    int id_stack_count;
-
+    // Command Buffer
     NUI_Command commands[NUI_MAX_COMMANDS];
     int command_count;
 } NUI_Context;
@@ -112,7 +169,13 @@ void nui_input_mouse_button(NUI_Context *ctx, bool down);
 // Widgets
 void nui_frame_begin(NUI_Context *ctx);
 void nui_frame_end(NUI_Context *ctx);
-bool nui_button(NUI_Context *ctx, const char *label, NUI_AABB rect);
+void nui_scissors_push(NUI_Context *ctx, NUI_AABB area);
+void nui_scissors_pop(NUI_Context *ctx);
+void nui_layout_push(NUI_Context *ctx, NUI_AABB area, NUI_LayoutMode mode);
+void nui_layout_pop(NUI_Context *ctx);
+bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area);
+void nui_window_end(NUI_Context *ctx);
+bool nui_button(NUI_Context *ctx, const char *label);
 
 // Commands
 bool nui_next_command(NUI_Context *ctx, NUI_Command *out_cmd);

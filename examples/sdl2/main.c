@@ -51,14 +51,11 @@ void sdl_render_text(SDL_Renderer *renderer, TTF_Font *font,
 }
 
 void sdl_set_scissors(SDL_Renderer *renderer,
-                      const NUI_CommandScissor *scissor_cmd) {
-    if (scissor_cmd->clear) {
-        SDL_RenderSetClipRect(renderer, NULL);
-    } else {
-        SDL_Rect rect = {scissor_cmd->area.x, scissor_cmd->area.y,
-                         scissor_cmd->area.w, scissor_cmd->area.h};
-        SDL_RenderSetClipRect(renderer, &rect);
-    }
+                      const NUI_CommandScissors *scissor_cmd) {
+
+    SDL_Rect rect = {scissor_cmd->area.x, scissor_cmd->area.y,
+                     scissor_cmd->area.w, scissor_cmd->area.h};
+    SDL_RenderSetClipRect(renderer, &rect);
 }
 
 int main(void) {
@@ -97,6 +94,7 @@ int main(void) {
         return 1;
     }
 
+    // Initialize context
     NUI_Context ctx = {0};
     nui_init(&ctx, sdl_measure_text, default_font);
 
@@ -125,18 +123,37 @@ int main(void) {
         // UI / Logic
         nui_frame_begin(&ctx);
 
-        if (nui_button(&ctx, "Click Me", (NUI_AABB){100, 100, 100, 30})) {
-            printf("Button 1 Clicked!\n");
+        if (nui_window_begin(&ctx, "Test Window",
+                             (NUI_AABB){10, 20, 300, 120})) {
+
+            static char labels[3][32];
+            for (int i = 0; i < 3; i++) {
+                snprintf(labels[i], sizeof(labels[i]), "Click Me %d", i + 1);
+                if (nui_button(&ctx, labels[i])) {
+                    printf("Button %d Clicked!\n", i + 1);
+                }
+            }
+
+            nui_window_end(&ctx);
         }
 
-        if (nui_button(&ctx, "Click Me 2", (NUI_AABB){100, 140, 100, 30})) {
-            printf("Button 2 Clicked!\n");
+        if (nui_window_begin(&ctx, "Test Window2",
+                             (NUI_AABB){120, 80, 300, 120})) {
+            static char labels[3][32];
+            for (int i = 0; i < 3; i++) {
+                snprintf(labels[i], sizeof(labels[i]), "Click Me 2-%d", i + 1);
+                if (nui_button(&ctx, labels[i])) {
+                    printf("Button %d Clicked!\n", i + 1);
+                }
+            }
+
+            nui_window_end(&ctx);
         }
 
         nui_frame_end(&ctx);
 
-        // Command Buffer / Rendering
-        SDL_SetRenderDrawColor(renderer, 20, 20, 25, 255);
+        // Drain Command Buffer and render
+        SDL_SetRenderDrawColor(renderer, 40, 40, 50, 255);
         SDL_RenderClear(renderer);
 
         NUI_Command cmd;
@@ -144,17 +161,39 @@ int main(void) {
             switch (cmd.type) {
             case NUI_CMD_RECT:
                 sdl_render_rect(renderer, &cmd.rect);
+#ifdef PRINT_CMDS_ONCE
+                printf(
+                    "  NUI_CMD_RECT: x=%d y=%d w=%d h=%d color=(%d,%d,%d,%d)\n",
+                    cmd.rect.rect.x, cmd.rect.rect.y, cmd.rect.rect.w,
+                    cmd.rect.rect.h, cmd.rect.color.r, cmd.rect.color.g,
+                    cmd.rect.color.b, cmd.rect.color.a);
+#endif
                 break;
             case NUI_CMD_TEXT:
                 sdl_render_text(renderer, default_font, &cmd.text);
+#ifdef PRINT_CMDS_ONCE
+                printf("  NUI_CMD_TEXT: x=%d y=%d text=\"%s\" "
+                       "color=(%d,%d,%d,%d)\n",
+                       cmd.text.x, cmd.text.y, cmd.text.text, cmd.text.color.r,
+                       cmd.text.color.g, cmd.text.color.b, cmd.text.color.a);
+#endif
                 break;
             case NUI_CMD_SCISSORS:
-                sdl_set_scissors(renderer, &cmd.scissor);
+                sdl_set_scissors(renderer, &cmd.scissors);
+#ifdef PRINT_CMDS_ONCE
+                printf("  NUI_CMD_SCISSORS: area=(x=%d y=%d w=%d h=%d)\n",
+                       cmd.scissors.area.x, cmd.scissors.area.y,
+                       cmd.scissors.area.w, cmd.scissors.area.h);
+#endif
                 break;
             default:
                 UNREACHABLE("NUI_CommandType");
             }
         }
+
+#ifdef PRINT_CMDS_ONCE
+        abort();
+#endif
 
         SDL_RenderPresent(renderer);
     }
