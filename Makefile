@@ -1,9 +1,8 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -Iinclude `pkg-config --cflags sdl2`
+CFLAGS = -Wall -Wextra -std=c11 `pkg-config --cflags sdl2`
 LDFLAGS = `pkg-config --libs sdl2` -lm
 
 SRC_DIR = src
-INC_DIR = include
 EXAMPLE_DIR = examples/sdl2
 BUILD_DIR = build
 
@@ -27,7 +26,7 @@ $(BUILD_DIR)/nui.o: $(LIB_SRC)
 
 $(BUILD_DIR)/main.o: $(EXAMPLE_SRC)
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(SRC_DIR) -c $< -o $@
 
 format:
 	clang-format -i $(FORMAT_SOURCES)
