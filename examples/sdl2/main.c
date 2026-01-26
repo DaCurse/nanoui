@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -15,8 +16,8 @@
     } while (0)
 #define UNREACHABLE(x) TODO(x)
 
-static void render_rect(SDL_Renderer *renderer,
-                        const NUI_CommandRect *rect_cmd) {
+static void sdl_render_rect(SDL_Renderer *renderer,
+                            const NUI_CommandRect *rect_cmd) {
     SDL_Rect sdl_rect = {rect_cmd->rect.x, rect_cmd->rect.y, rect_cmd->rect.w,
                          rect_cmd->rect.h};
     SDL_SetRenderDrawColor(renderer, rect_cmd->color.r, rect_cmd->color.g,
@@ -24,10 +25,57 @@ static void render_rect(SDL_Renderer *renderer,
     SDL_RenderFillRect(renderer, &sdl_rect);
 }
 
+void sdl_measure_text(NUI_UserFont font, const char *text, int *out_width,
+                      int *out_height) {
+
+    TTF_Font *sdl_font = (TTF_Font *)font;
+    if (!text || !font ||
+        TTF_SizeText(sdl_font, text, out_width, out_height) != 0) {
+        *out_width = 0;
+        *out_height = 0;
+    }
+}
+
+void sdl_render_text(SDL_Renderer *renderer, TTF_Font *font,
+                     const NUI_CommandText *text_cmd) {
+    SDL_Color color = *(SDL_Color *)(&text_cmd->color);
+    SDL_Surface *surf = TTF_RenderText_Blended(font, text_cmd->text, color);
+    if (surf) {
+        SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_Rect dst = {text_cmd->x, text_cmd->y, surf->w, surf->h};
+        SDL_RenderCopy(renderer, tex, NULL, &dst);
+
+        SDL_DestroyTexture(tex);
+        SDL_FreeSurface(surf);
+    }
+}
+
+void sdl_set_scissors(SDL_Renderer *renderer,
+                      const NUI_CommandScissor *scissor_cmd) {
+    if (scissor_cmd->clear) {
+        SDL_RenderSetClipRect(renderer, NULL);
+    } else {
+        SDL_Rect rect = {scissor_cmd->area.x, scissor_cmd->area.y,
+                         scissor_cmd->area.w, scissor_cmd->area.h};
+        SDL_RenderSetClipRect(renderer, &rect);
+    }
+}
+
 int main(void) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n",
                 SDL_GetError());
+        return 1;
+    }
+    if (TTF_Init() == -1) {
+        printf("TTF_Init error: %s\n", TTF_GetError());
+        return 1;
+    }
+
+    TTF_Font *default_font =
+        TTF_OpenFont("examples/fonts/SpaceMono-Regular.ttf", 14);
+    if (!default_font) {
+        printf("Failed to load font: %s\n", TTF_GetError());
         return 1;
     }
 
@@ -50,6 +98,7 @@ int main(void) {
     }
 
     NUI_Context ctx = {0};
+    nui_init(&ctx, sdl_measure_text, default_font);
 
     bool quit = false;
     SDL_Event e;
@@ -74,7 +123,7 @@ int main(void) {
         }
 
         // UI / Logic
-        nui_begin_frame(&ctx);
+        nui_frame_begin(&ctx);
 
         if (nui_button(&ctx, "Click Me", (NUI_AABB){100, 100, 100, 30})) {
             printf("Button 1 Clicked!\n");
@@ -84,7 +133,7 @@ int main(void) {
             printf("Button 2 Clicked!\n");
         }
 
-        nui_end_frame(&ctx);
+        nui_frame_end(&ctx);
 
         // Command Buffer / Rendering
         SDL_SetRenderDrawColor(renderer, 20, 20, 25, 255);
@@ -93,13 +142,15 @@ int main(void) {
         NUI_Command cmd;
         while (nui_next_command(&ctx, &cmd)) {
             switch (cmd.type) {
-            case NUI_CMD_RECT: {
-                render_rect(renderer, &cmd.rect);
-            } break;
+            case NUI_CMD_RECT:
+                sdl_render_rect(renderer, &cmd.rect);
+                break;
             case NUI_CMD_TEXT:
-                TODO("NUI_CMD_TEXT");
-            case NUI_CMD_SCISSOR:
-                TODO("NUI_CMD_SCISSOR");
+                sdl_render_text(renderer, default_font, &cmd.text);
+                break;
+            case NUI_CMD_SCISSORS:
+                sdl_set_scissors(renderer, &cmd.scissor);
+                break;
             default:
                 UNREACHABLE("NUI_CommandType");
             }
@@ -114,3 +165,4 @@ int main(void) {
 
     return 0;
 }
+

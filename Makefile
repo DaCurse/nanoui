@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 `pkg-config --cflags sdl2`
-LDFLAGS = `pkg-config --libs sdl2` -lm
+CFLAGS = -Wall -Wextra -std=c11 `pkg-config --cflags sdl2 SDL2_ttf` 
+LDFLAGS = `pkg-config --libs sdl2 SDL2_ttf`  -lm
 
 SRC_DIR = src
 EXAMPLE_DIR = examples/sdl2

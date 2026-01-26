@@ -20,7 +20,7 @@ typedef struct {
 typedef enum {
     NUI_CMD_RECT,
     NUI_CMD_TEXT,
-    NUI_CMD_SCISSOR,
+    NUI_CMD_SCISSORS,
 } NUI_CommandType;
 
 typedef struct {
@@ -31,6 +31,7 @@ typedef struct {
 typedef struct {
     const char *text;
     int x, y;
+    NUI_Color color;
 } NUI_CommandText;
 
 typedef struct {
@@ -59,13 +60,34 @@ typedef struct {
 } NUI_InputState;
 
 typedef struct {
-    int cursor_x, cursor_y;
-    int item_spacing;
+    int cursor_x, cursor_y; // TODO
 } NUI_LayoutState;
 
 typedef struct {
+    NUI_Color text;
+
+    NUI_Color button_idle;
+    NUI_Color button_hot;
+    NUI_Color button_active;
+
+} NUI_Style;
+
+extern const NUI_Style nui_default_style;
+
+// User provided font type
+typedef void *NUI_UserFont;
+typedef void (*NUI_MeasureTextCallback)(NUI_UserFont font, const char *text,
+                                        int *out_width, int *out_height);
+
+typedef struct {
+    // User provided
+    NUI_MeasureTextCallback measure_text;
+    NUI_UserFont font;
+
+    // State
     NUI_InputState input;
     NUI_LayoutState layout;
+    NUI_Style style;
 
     NUI_Id hot;
     NUI_Id active;
@@ -78,13 +100,18 @@ typedef struct {
     int command_count;
 } NUI_Context;
 
+// Context
+void nui_init(NUI_Context *ctx, NUI_MeasureTextCallback measure_text,
+              NUI_UserFont font);
+void nui_set_style(NUI_Context *ctx, NUI_Style style);
+
 // Input
 void nui_input_mouse_move(NUI_Context *ctx, int x, int y);
 void nui_input_mouse_button(NUI_Context *ctx, bool down);
 
 // Widgets
-void nui_begin_frame(NUI_Context *ctx);
-void nui_end_frame(NUI_Context *ctx);
+void nui_frame_begin(NUI_Context *ctx);
+void nui_frame_end(NUI_Context *ctx);
 bool nui_button(NUI_Context *ctx, const char *label, NUI_AABB rect);
 
 // Commands
