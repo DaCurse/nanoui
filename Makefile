@@ -5,10 +5,10 @@ LDFLAGS = `pkg-config --libs sdl2 SDL2_ttf`  -lm
 
 WASM_BUILD_DIR = build_wasm
 WASM_FLAGS = -s EXPORTED_FUNCTIONS='["_nui_init", "_nui_frame_begin", "_nui_frame_end", "_nui_window_begin", "_nui_window_end", "_nui_button", "_nui_input_mouse_move", "_nui_input_mouse_button", "_nui_next_command", "_malloc", "_free"]' \
-             -s EXPORTED_RUNTIME_METHODS='["addFunction", "setValue", "ccall", "cwrap", "getValue", "UTF8ToString"]' \
-             -s ALLOW_MEMORY_GROWTH=1 \
+			 -s EXPORTED_RUNTIME_METHODS='["addFunction", "setValue", "ccall", "cwrap", "getValue", "UTF8ToString"]' \
+			 -s ALLOW_MEMORY_GROWTH=1 \
 			 -s ALLOW_TABLE_GROWTH \
-             -O3
+			 -O3
 
 ifdef PRINT_CMDS
 CFLAGS += -DPRINT_CMDS_ONCE
