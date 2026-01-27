@@ -55,10 +55,16 @@ static inline NUI_AABB nui_aabb_intersects(NUI_AABB a, NUI_AABB b) {
     int x2 = MIN(a.x + a.w, b.x + b.w);
     int y2 = MIN(a.y + a.h, b.y + b.h);
 
-    int w = MAX(0, x2 - x1);
-    int h = MAX(0, y2 - y1);
+    if (x2 <= x1 || y2 <= y1) {
+        return (NUI_AABB){0, 0, 0, 0};
+    }
 
-    return (NUI_AABB){x1, y1, w, h};
+    return (NUI_AABB){
+        .x = x1,
+        .y = y1,
+        .w = x2 - x1,
+        .h = y2 - y1,
+    };
 }
 
 static inline bool nui_aabb_overlaps(NUI_AABB a, NUI_AABB b) {
@@ -138,6 +144,7 @@ static NUI_Container *nui_get_container(NUI_Context *ctx, NUI_Id id) {
 
 void nui_init(NUI_Context *ctx, NUI_MeasureTextCallback measure_text,
               NUI_UserFont font) {
+    assert(measure_text && "measure_text must not be NULL");
     ctx->measure_text = measure_text;
     ctx->font = font;
     ctx->style = nui_default_style;
@@ -239,8 +246,8 @@ static NUI_AABB nui_layout_allocate(NUI_Context *ctx, int w, int h) {
 
     // Handle wrapping for horizontal layout if exceeding available width
     if (layout->mode == NUI_LAYOUT_HORIZONTAL) {
-        float right_edge = layout->cursor_x + w;
-        float max_edge = layout->start_x + layout->width;
+        int right_edge = layout->cursor_x + w;
+        int max_edge = layout->start_x + layout->width;
 
         if (right_edge > max_edge) {
             layout->cursor_x = layout->start_x;
@@ -320,12 +327,6 @@ bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area) {
         title_h,
     };
 
-    // Initialize the command slice for this container
-    container->command_start_index = ctx->command_count;
-    container->command_count = 0;
-    // Set as active container to track command count
-    ctx->current_container = container;
-
     // Dragging and focus handling
     bool hovered =
         nui_aabb_contains(title_area, ctx->input.mouse_x, ctx->input.mouse_y);
@@ -368,9 +369,14 @@ bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area) {
 
     // Skip rendering if window is outside current scissors
     if (!nui_aabb_overlaps(content_area, ctx->current_scissors)) {
-        ctx->current_container = NULL;
         return false;
     }
+
+    // Initialize the command slice for this container
+    container->command_start_index = ctx->command_count;
+    container->command_count = 0;
+    // Set as active container to track command count
+    ctx->current_container = container;
 
     // Render title bar and window background
     nui_push_command_rect(ctx, title_area, ctx->style.window_title_bar);
@@ -400,8 +406,11 @@ void nui_window_end(NUI_Context *ctx) {
 }
 
 bool nui_button(NUI_Context *ctx, const char *label) {
-    NUI_Id id = nui_hash(
-        label, ctx->current_container ? ctx->current_container->id : 0);
+    if (!ctx->current_container) {
+        assert("nui_button called without a parent container" && 0);
+        return false;
+    }
+    NUI_Id id = nui_hash(label, ctx->current_container->id);
 
     // Derive position size based on current layout
     int text_w, text_h;
