@@ -14,7 +14,7 @@
 
 // Scissors covering the entire possible area
 static const NUI_AABB NUI_ROOT_SCISSORS =
-    (NUI_AABB){0, 0, 0x7FFFFFFF, 0x7FFFFFFF};
+    (NUI_AABB){0, 0, 0x10000000, 0x10000000};
 
 const NUI_Style nui_default_style = {
     .text = {0xFF, 0xFF, 0xFF, 0xFF},
@@ -111,7 +111,8 @@ static int nui_compare_containers(const void *a, const void *b) {
     return 0;
 }
 
-static inline void nui_bring_to_front(NUI_Context *ctx, NUI_Container *container) {
+static inline void nui_bring_to_front(NUI_Context *ctx,
+                                      NUI_Container *container) {
     container->z_index = ++ctx->last_z_index;
 }
 
@@ -174,6 +175,24 @@ void nui_frame_begin(NUI_Context *ctx) {
 
     ctx->layout_stack_top = 0;
     memset(&ctx->layout, 0, sizeof(ctx->layout));
+
+    // Find hovered container
+    ctx->hover_container_id = 0;
+    int best_z = -1;
+    for (int i = 0; i < ctx->container_count; i++) {
+        NUI_Container *c = &ctx->container_list[i];
+        if (c->command_count > 0 &&
+            nui_aabb_contains(c->area, ctx->input.mouse_x,
+                              ctx->input.mouse_y)) {
+            if (c->z_index > best_z) {
+                best_z = c->z_index;
+                ctx->hover_container_id = c->id;
+            }
+        }
+
+        // Reset command count from last frame
+        c->command_count = 0;
+    }
 }
 
 void nui_frame_end(NUI_Context *ctx) {
@@ -285,10 +304,21 @@ bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area) {
     NUI_Id id = nui_hash(title, 0);
     NUI_Container *container = nui_get_container(ctx, id);
 
+    int title_h = ctx->style.padding_y * 2 + 16;
+
     // Initialize container area on first use
     if (container->area.w == 0) {
         container->area = area;
+        container->area.h += title_h;
     }
+
+    // Calculate title bar area
+    NUI_AABB title_area = {
+        container->area.x,
+        container->area.y,
+        container->area.w,
+        title_h,
+    };
 
     // Initialize the command slice for this container
     container->command_start_index = ctx->command_count;
@@ -296,16 +326,9 @@ bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area) {
     // Set as active container to track command count
     ctx->current_container = container;
 
-    // Calculate title bar area
-    NUI_AABB title_bar_area;
-    title_bar_area.x = container->area.x;
-    title_bar_area.y = container->area.y;
-    title_bar_area.w = container->area.w;
-    title_bar_area.h = ctx->style.padding_y * 2 + 16;
-
     // Dragging and focus handling
-    bool hovered = nui_aabb_contains(title_bar_area, ctx->input.mouse_x,
-                                     ctx->input.mouse_y);
+    bool hovered =
+        nui_aabb_contains(title_area, ctx->input.mouse_x, ctx->input.mouse_y);
     if (hovered) {
         ctx->hot = id;
     }
@@ -315,8 +338,8 @@ bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area) {
         if (ctx->input.mouse_down) {
             container->area.x = ctx->input.mouse_x - ctx->input.drag_offset_x;
             container->area.y = ctx->input.mouse_y - ctx->input.drag_offset_y;
-            title_bar_area.x = container->area.x;
-            title_bar_area.y = container->area.y;
+            title_area.x = container->area.x;
+            title_area.y = container->area.y;
         } else {
             ctx->active = 0;
         }
@@ -328,30 +351,38 @@ bool nui_window_begin(NUI_Context *ctx, const char *title, NUI_AABB area) {
         nui_bring_to_front(ctx, container);
     }
 
+    // Calculate area below title bar
+    NUI_AABB body_area = {
+        container->area.x,
+        container->area.y + title_h,
+        container->area.w,
+        container->area.h - title_h,
+    };
+    // Calculate area inside margins
+    NUI_AABB content_area = {
+        body_area.x + ctx->style.margin,
+        body_area.y + ctx->style.margin,
+        body_area.w - (ctx->style.margin * 2),
+        body_area.h - (ctx->style.margin * 2),
+    };
+
     // Skip rendering if window is outside current scissors
-    area = container->area;
-    if (!nui_aabb_overlaps(area, ctx->current_scissors)) {
+    if (!nui_aabb_overlaps(content_area, ctx->current_scissors)) {
+        ctx->current_container = NULL;
         return false;
     }
 
     // Render title bar and window background
-    nui_push_command_rect(ctx, title_bar_area, ctx->style.window_title_bar);
-    nui_scissors_push(ctx, title_bar_area);
-    nui_push_command_text(ctx, title, title_bar_area.x + ctx->style.padding_x,
-                          title_bar_area.y + ctx->style.padding_y,
-                          ctx->style.text);
+    nui_push_command_rect(ctx, title_area, ctx->style.window_title_bar);
+    nui_scissors_push(ctx, title_area);
+    nui_push_command_text(ctx, title, title_area.x + ctx->style.padding_x,
+                          title_area.y + ctx->style.padding_y, ctx->style.text);
     nui_scissors_pop(ctx);
 
     // Prepare content area and layout
-    area.y += title_bar_area.h;
-    nui_push_command_rect(ctx, area, ctx->style.window_bg);
-
-    area.y += ctx->style.margin;
-    area.x += ctx->style.margin;
-    area.w -= ctx->style.margin;
-    area.h -= ctx->style.margin;
-    nui_scissors_push(ctx, area);
-    nui_layout_push(ctx, area, NUI_LAYOUT_VERTICAL);
+    nui_push_command_rect(ctx, body_area, ctx->style.window_bg);
+    nui_scissors_push(ctx, content_area);
+    nui_layout_push(ctx, content_area, NUI_LAYOUT_VERTICAL);
 
     return true;
 }
@@ -369,28 +400,31 @@ void nui_window_end(NUI_Context *ctx) {
 }
 
 bool nui_button(NUI_Context *ctx, const char *label) {
-    NUI_Id id = nui_hash(label, 0);
+    NUI_Id id = nui_hash(
+        label, ctx->current_container ? ctx->current_container->id : 0);
 
     // Derive position size based on current layout
     int text_w, text_h;
     ctx->measure_text(ctx->font, label, &text_w, &text_h);
     int button_w = text_w + (ctx->style.padding_x * 2);
     int button_h = text_h + (ctx->style.padding_y * 2);
-    NUI_AABB rect = nui_layout_allocate(ctx, button_w, button_h);
+    NUI_AABB area = nui_layout_allocate(ctx, button_w, button_h);
 
     // Hover and click
+    bool is_top_window =
+        (ctx->current_container->id == ctx->hover_container_id);
     bool mouse_in_rect =
-        nui_aabb_contains(rect, ctx->input.mouse_x, ctx->input.mouse_y);
+        nui_aabb_contains(area, ctx->input.mouse_x, ctx->input.mouse_y);
     bool mouse_in_scissor = nui_aabb_contains(
         ctx->current_scissors, ctx->input.mouse_x, ctx->input.mouse_y);
-    bool hovered = mouse_in_rect && mouse_in_scissor;
-    if (hovered && (ctx->active == 0 || ctx->active == id)) {
+
+    if (is_top_window && mouse_in_rect && mouse_in_scissor) {
         ctx->hot = id;
-        if (ctx->input.mouse_pressed) {
-            ctx->active = id;
-        }
     }
-    bool triggered = ctx->input.mouse_released && ctx->active == id && hovered;
+
+    if (ctx->hot == id && ctx->input.mouse_pressed) {
+        ctx->active = id;
+    }
 
     // Render button
     NUI_Color color = ctx->style.button_idle;
@@ -401,12 +435,12 @@ bool nui_button(NUI_Context *ctx, const char *label) {
     }
 
     // Draw border (outer rect)
-    nui_push_command_rect(ctx, rect, ctx->style.border);
+    nui_push_command_rect(ctx, area, ctx->style.border);
     // Draw button (inner rect, inset by border_radius)
-    NUI_AABB inner_rect = {rect.x + ctx->style.border_radius,
-                           rect.y + ctx->style.border_radius,
-                           rect.w - 2 * ctx->style.border_radius,
-                           rect.h - 2 * ctx->style.border_radius};
+    NUI_AABB inner_rect = {area.x + ctx->style.border_radius,
+                           area.y + ctx->style.border_radius,
+                           area.w - 2 * ctx->style.border_radius,
+                           area.h - 2 * ctx->style.border_radius};
     nui_push_command_rect(ctx, inner_rect, color);
     nui_scissors_push(ctx, inner_rect);
     nui_push_command_text(
@@ -414,7 +448,7 @@ bool nui_button(NUI_Context *ctx, const char *label) {
         inner_rect.y + (inner_rect.h - text_h) / 2, ctx->style.text);
     nui_scissors_pop(ctx);
 
-    return triggered;
+    return (ctx->active == id && ctx->input.mouse_released);
 }
 
 bool nui_next_command(NUI_Context *ctx, NUI_Command *out_cmd) {

@@ -124,13 +124,13 @@ int main(void) {
         nui_frame_begin(&ctx);
 
         if (nui_window_begin(&ctx, "Test Window",
-                             (NUI_AABB){10, 20, 300, 120})) {
+                             (NUI_AABB){10, 20, 300, 130})) {
 
             static char labels[3][32];
             for (int i = 0; i < 3; i++) {
                 snprintf(labels[i], sizeof(labels[i]), "Click Me %d", i + 1);
                 if (nui_button(&ctx, labels[i])) {
-                    printf("Button %d Clicked!\n", i + 1);
+                    printf("Button %d Clicked in Window 1!\n", i + 1);
                 }
             }
 
@@ -138,12 +138,12 @@ int main(void) {
         }
 
         if (nui_window_begin(&ctx, "Test Window2",
-                             (NUI_AABB){120, 80, 300, 120})) {
+                             (NUI_AABB){120, 80, 300, 130})) {
             static char labels[3][32];
             for (int i = 0; i < 3; i++) {
-                snprintf(labels[i], sizeof(labels[i]), "Click Me 2-%d", i + 1);
+                snprintf(labels[i], sizeof(labels[i]), "Click Me %d", i + 1);
                 if (nui_button(&ctx, labels[i])) {
-                    printf("Button %d Clicked!\n", i + 1);
+                    printf("Button %d Clicked in Window 2!\n", i + 1);
                 }
             }
 

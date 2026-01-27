@@ -134,6 +134,8 @@ typedef struct {
     // Container list
     NUI_Container container_list[NUI_CONTAINER_LIST_SIZE];
     int container_count;
+    // Topmost hovered container
+    NUI_Id hover_container_id;
     int last_z_index;
 
     // The active container currently being drawn to
