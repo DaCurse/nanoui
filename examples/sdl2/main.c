@@ -58,7 +58,7 @@ void sdl_set_scissors(SDL_Renderer *renderer,
     SDL_RenderSetClipRect(renderer, &rect);
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n",
                 SDL_GetError());
